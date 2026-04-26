@@ -1,0 +1,13 @@
+{
+  "name": "Game of Turns",
+  "short_name": "Game of Turns",
+  "description": "A fair throne is a peaceful realm",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#08090f",
+  "theme_color": "#08090f",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
