@@ -619,7 +619,7 @@ function startSession() {
 
   // Init players
   cfg.players.forEach(p => {
-    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, stabsUsed: 0, skipNext: false, peacefulCredit: 0, stabPenalty: 0 };
+    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, stabsUsed: 0, skipNext: false, peacefulCredit: 0, stabPenalty: 0, stintCreditApplied: 0, stintPenaltyApplied: 0 };
   });
 
   // Assign initial holders randomly
@@ -667,13 +667,20 @@ function pickAndTriggerSwap() {
   sess.swappingThrone = chosenIdx;
   sess.swaps++;
 
-  // Finalise current holder's time
+  // Finalise current holder's time.
+  // Strip out any credit/penalty that was applied to their timer this stint so those
+  // adjustments don't distort the queue metric — only pure random-timer time counts.
   const curHolder = sess.players[sess.thrones[chosenIdx].holder];
   if (curHolder?.stintStart) {
     const stintMs = Date.now() - curHolder.stintStart;
-    curHolder.totalMs += stintMs;
+    const queueMs = Math.max(0, stintMs
+      - (curHolder.stintCreditApplied  || 0)   // credit extended their reign — deduct so queue isn't punished
+      + (curHolder.stintPenaltyApplied || 0));  // penalty shortened their reign — add back so queue isn't rewarded
+    curHolder.totalMs += queueMs;
     if (stintMs > curHolder.longestStintMs) curHolder.longestStintMs = stintMs;
-    curHolder.stintStart = null;
+    curHolder.stintStart         = null;
+    curHolder.stintCreditApplied  = 0;
+    curHolder.stintPenaltyApplied = 0;
   }
 
   // Pick challenge if trials mode
@@ -740,19 +747,24 @@ function completeSwap(newHolder) {
   if (np) np.stintStart = Date.now();
   showScreen('screen-session');
   setTimer();
-  // Apply Peaceful Transition credit (extends reign)
+  // Apply Peaceful Transition credit (extends reign) — tracked so totalMs isn't inflated
   if (np?.peacefulCredit > 0) {
     sess.timerEnd      += np.peacefulCredit;
     sess.timerDuration += np.peacefulCredit;
+    np.stintCreditApplied = (np.stintCreditApplied || 0) + np.peacefulCredit;
     const secs = Math.round(np.peacefulCredit / 1000);
     const label = secs >= 60 ? `${Math.floor(secs/60)}m${secs%60?` ${secs%60}s`:''}` : `${secs}s`;
     showToast(`🕊️ ${newHolder} earns +${label} for their patience!`, 3000);
     np.peacefulCredit = 0;
   }
-  // Apply stab penalty (shortens reign)
+  // Apply stab penalty (shortens reign) — tracked so totalMs isn't deflated
   if (np?.stabPenalty > 0) {
-    sess.timerEnd      = Math.max(sess.timerEnd - np.stabPenalty, Date.now() + 5000);
-    sess.timerDuration = Math.max(sess.timerDuration - np.stabPenalty, 5000);
+    const actualPenalty = Math.min(np.stabPenalty, sess.timerEnd - Date.now() - 5000);
+    if (actualPenalty > 0) {
+      sess.timerEnd      -= actualPenalty;
+      sess.timerDuration -= actualPenalty;
+      np.stintPenaltyApplied = (np.stintPenaltyApplied || 0) + actualPenalty;
+    }
     showToast(`⚔️ ${newHolder} loses 30s for usurping the throne!`, 2500);
     np.stabPenalty = 0;
   }
