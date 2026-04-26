@@ -807,10 +807,8 @@ function renderSession() {
   if (firstInQueue) {
     const creditMin = Math.round((firstInQueue.peacefulCredit || 0) / 60000);
     const creditTag = creditMin > 0 ? ` (${creditMin}m banked)` : '';
-    peacefulBtn.textContent = firstInQueue.skipNext
-      ? `🕊️ ${firstInQueue.name}: Stepping aside…`
-      : `🕊️ ${firstInQueue.name}: Step aside${creditTag}`;
-    peacefulBtn.style.opacity = firstInQueue.skipNext ? '0.5' : '1';
+    peacefulBtn.textContent = `🕊️ ${firstInQueue.name}: Step aside${creditTag}`;
+    peacefulBtn.style.opacity = '1';
   } else {
     peacefulBtn.textContent = '🕊️ Peaceful Transition';
     peacefulBtn.style.opacity = '0.4';
@@ -831,17 +829,17 @@ function renderSession() {
 
 // Peaceful Transition — next person in queue voluntarily skips their turn.
 // They bank a 5-minute credit that extends their reign when they eventually take the throne.
-const PEACEFUL_MS = 5 * 60 * 1000;
+const PEACEFUL_MS = 2 * 60 * 1000;
 document.getElementById('btn-peaceful').onclick = () => {
   if (!sess) return;
   const q = getQueue();
   const player = q[0];
   if (!player) { showToast('No one in the queue'); return; }
-  player.skipNext = true;
+  player.skipNext = true; // stays true until the next swap skips them once
   player.peacefulCredit += PEACEFUL_MS;
   playBeep(528, 0.14);
   const totalCredit = Math.round(player.peacefulCredit / 60000);
-  showToast(`🕊️ ${player.name} steps aside — ${totalCredit}m credit banked`, 2500);
+  showToast(`🕊️ ${player.name} steps aside — ${totalCredit}m banked`, 2500);
   renderSession();
 };
 
