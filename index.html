@@ -619,7 +619,7 @@ function startSession() {
 
   // Init players
   cfg.players.forEach(p => {
-    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, stabsUsed: 0, skipNext: false, peacefulCredit: 0 };
+    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, stabsUsed: 0, skipNext: false, peacefulCredit: 0, stabPenalty: 0 };
   });
 
   // Assign initial holders randomly
@@ -734,13 +734,21 @@ function completeSwap(newHolder) {
   if (np) np.stintStart = Date.now();
   showScreen('screen-session');
   setTimer();
-  // If this player banked Peaceful Transition credit, extend their reign now
+  // Apply Peaceful Transition credit (extends reign)
   if (np?.peacefulCredit > 0) {
     sess.timerEnd      += np.peacefulCredit;
     sess.timerDuration += np.peacefulCredit;
-    const extraMin = Math.round(np.peacefulCredit / 60000);
-    showToast(`🕊️ ${newHolder} earned +${extraMin}m for their patience!`, 3000);
+    const secs = Math.round(np.peacefulCredit / 1000);
+    const label = secs >= 60 ? `${Math.floor(secs/60)}m${secs%60?` ${secs%60}s`:''}` : `${secs}s`;
+    showToast(`🕊️ ${newHolder} earns +${label} for their patience!`, 3000);
     np.peacefulCredit = 0;
+  }
+  // Apply stab penalty (shortens reign)
+  if (np?.stabPenalty > 0) {
+    sess.timerEnd      = Math.max(sess.timerEnd - np.stabPenalty, Date.now() + 5000);
+    sess.timerDuration = Math.max(sess.timerDuration - np.stabPenalty, 5000);
+    showToast(`⚔️ ${newHolder} loses 30s for usurping the throne!`, 2500);
+    np.stabPenalty = 0;
   }
   renderSession();
 }
@@ -829,7 +837,8 @@ function renderSession() {
 
 // Peaceful Transition — next person in queue voluntarily skips their turn.
 // They bank a 5-minute credit that extends their reign when they eventually take the throne.
-const PEACEFUL_MS = 2 * 60 * 1000;
+const PEACEFUL_MS  = 2 * 60 * 1000 + 30 * 1000; // 2m30s — 2min credit + 30sec patience bonus
+const STAB_PENALTY = 30 * 1000;                  // 30sec deducted from usurper's next reign
 document.getElementById('btn-peaceful').onclick = () => {
   if (!sess) return;
   const q = getQueue();
@@ -852,7 +861,10 @@ document.getElementById('btn-force-swap').onclick = () => {
       showToast(`${usurper.name} has no usurps left! (${cfg.stabLimit}/${cfg.stabLimit} used)`);
       return;
     }
+  }
+  if (usurper) {
     usurper.stabsUsed++;
+    usurper.stabPenalty += STAB_PENALTY; // costs 30s off their next reign
   }
   if (sess.timerTick) clearInterval(sess.timerTick);
   pickAndTriggerSwap();
