@@ -702,21 +702,27 @@ function triggerAlert(nextPlayer, throneIdx, challenge) {
     wrap.style.display = 'none';
   }
 
-  // Countdown
-  let count = 10;
+  // Countdown — skipped when there's a challenge so the player can finish it at their own pace
   const cdEl = document.getElementById('alert-countdown');
-  cdEl.textContent = count;
-  cdEl.className = 'alert-countdown';
-
   if (sess.alertTick) clearInterval(sess.alertTick);
-  sess.alertTick = setInterval(() => {
-    count--;
-    cdEl.textContent = Math.max(0, count);
-    if (count <= 3) cdEl.className = 'alert-countdown urgent';
-    else if (count <= 5) cdEl.className = 'alert-countdown warn';
-    if (count <= 3 && count > 0) playBeep(count <= 1 ? 1200 : 880, 0.06);
-    if (count <= 0) { clearInterval(sess.alertTick); completeSwap(nextPlayer.name); }
-  }, 1000);
+
+  if (challenge) {
+    // No auto-timer: wait for the button press only
+    cdEl.style.display = 'none';
+  } else {
+    cdEl.style.display = '';
+    let count = 10;
+    cdEl.textContent = count;
+    cdEl.className = 'alert-countdown';
+    sess.alertTick = setInterval(() => {
+      count--;
+      cdEl.textContent = Math.max(0, count);
+      if (count <= 3) cdEl.className = 'alert-countdown urgent';
+      else if (count <= 5) cdEl.className = 'alert-countdown warn';
+      if (count <= 3 && count > 0) playBeep(count <= 1 ? 1200 : 880, 0.06);
+      if (count <= 0) { clearInterval(sess.alertTick); completeSwap(nextPlayer.name); }
+    }, 1000);
+  }
 
   document.getElementById('btn-alert-done').onclick = () => {
     if (sess.alertTick) clearInterval(sess.alertTick);
