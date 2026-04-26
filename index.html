@@ -586,9 +586,16 @@ function getQueue() {
 function getNextForThrone(idx) {
   const otherHeld = new Set(sess.thrones.filter((_, i) => i !== idx).map(t => t.holder));
   const curHolder = sess.thrones[idx].holder;
-  return Object.values(sess.players)
-    .filter(p => !otherHeld.has(p.name) && p.name !== curHolder && !p.sittingOut)
-    .sort((a, b) => a.totalMs - b.totalMs || a.name.localeCompare(b.name))[0] || null;
+  const candidates = Object.values(sess.players)
+    .filter(p => !otherHeld.has(p.name) && p.name !== curHolder)
+    .sort((a, b) => a.totalMs - b.totalMs || a.name.localeCompare(b.name));
+
+  // If the first candidate chose a Peaceful Transition, skip them once then clear the flag
+  if (candidates[0]?.skipNext) {
+    candidates[0].skipNext = false;
+    return candidates[1] || null;
+  }
+  return candidates[0] || null;
 }
 
 function pickTimer() {
@@ -612,7 +619,7 @@ function startSession() {
 
   // Init players
   cfg.players.forEach(p => {
-    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, sittingOut: false, stabsUsed: 0 };
+    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, stabsUsed: 0, skipNext: false, peacefulCredit: 0 };
   });
 
   // Assign initial holders randomly
@@ -727,6 +734,14 @@ function completeSwap(newHolder) {
   if (np) np.stintStart = Date.now();
   showScreen('screen-session');
   setTimer();
+  // If this player banked Peaceful Transition credit, extend their reign now
+  if (np?.peacefulCredit > 0) {
+    sess.timerEnd      += np.peacefulCredit;
+    sess.timerDuration += np.peacefulCredit;
+    const extraMin = Math.round(np.peacefulCredit / 60000);
+    showToast(`🕊️ ${newHolder} earned +${extraMin}m for their patience!`, 3000);
+    np.peacefulCredit = 0;
+  }
   renderSession();
 }
 
@@ -775,19 +790,31 @@ function renderSession() {
     rows.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:6px 2px">Everyone is on a throne!</div>';
   } else {
     queue.forEach((p, i) => {
-      const stabInfo = cfg.stabLimit > 0 ? ` · ⚔️ ${cfg.stabLimit - (p.stabsUsed||0)} left` : '';
+      const stabInfo   = cfg.stabLimit > 0 ? ` · ⚔️${cfg.stabLimit - (p.stabsUsed||0)}` : '';
+      const creditMin  = Math.round((p.peacefulCredit || 0) / 60000);
+      const creditInfo = creditMin > 0 ? ` · 🕊️+${creditMin}m` : '';
+      const skipTag    = p.skipNext ? ' <span style="color:var(--gold);font-size:10px">stepping aside</span>' : '';
       const row = document.createElement('div');
       row.className = 'queue-row';
-      row.innerHTML = `<div class="queue-pos">#${i + 1}</div><div class="queue-sig">${p.sigil}</div><div class="queue-nm">${p.name}</div><div class="queue-pt">${fmtMs(p.totalMs)}${stabInfo}</div>`;
+      row.innerHTML = `<div class="queue-pos">#${i + 1}</div><div class="queue-sig">${p.sigil}</div><div class="queue-nm">${p.name}${skipTag}</div><div class="queue-pt">${fmtMs(p.totalMs)}${stabInfo}${creditInfo}</div>`;
       rows.appendChild(row);
     });
   }
 
-  // Peaceful Transition button — always available, label shows current holder(s)
+  // Peaceful Transition button — shows next-in-queue player and their banked credit
   const firstInQueue = queue[0];
-  const holderNames  = sess.thrones.map(t => t.holder).join(' & ');
   const peacefulBtn  = document.getElementById('btn-peaceful');
-  peacefulBtn.textContent = `🕊️ +5 min for ${holderNames}`;
+  if (firstInQueue) {
+    const creditMin = Math.round((firstInQueue.peacefulCredit || 0) / 60000);
+    const creditTag = creditMin > 0 ? ` (${creditMin}m banked)` : '';
+    peacefulBtn.textContent = firstInQueue.skipNext
+      ? `🕊️ ${firstInQueue.name}: Stepping aside…`
+      : `🕊️ ${firstInQueue.name}: Step aside${creditTag}`;
+    peacefulBtn.style.opacity = firstInQueue.skipNext ? '0.5' : '1';
+  } else {
+    peacefulBtn.textContent = '🕊️ Peaceful Transition';
+    peacefulBtn.style.opacity = '0.4';
+  }
 
   // Usurper (force-swap) button — show remaining stabs when limit is set
   const swapBtn = document.getElementById('btn-force-swap');
@@ -802,17 +829,19 @@ function renderSession() {
   }
 }
 
-// Peaceful Transition — grants the current throne holder(s) an extra 5 minutes.
-// The extra time naturally banks into their totalMs when the swap eventually happens.
+// Peaceful Transition — next person in queue voluntarily skips their turn.
+// They bank a 5-minute credit that extends their reign when they eventually take the throne.
 const PEACEFUL_MS = 5 * 60 * 1000;
 document.getElementById('btn-peaceful').onclick = () => {
   if (!sess) return;
-  sess.timerEnd      += PEACEFUL_MS;
-  sess.timerDuration += PEACEFUL_MS;
-  // Show which holder(s) are benefiting
-  const holderNames = sess.thrones.map(t => t.holder).join(' & ');
-  playBeep(660, 0.12);
-  showToast(`🕊️ +5 min granted to ${holderNames}`, 2500);
+  const q = getQueue();
+  const player = q[0];
+  if (!player) { showToast('No one in the queue'); return; }
+  player.skipNext = true;
+  player.peacefulCredit += PEACEFUL_MS;
+  playBeep(528, 0.14);
+  const totalCredit = Math.round(player.peacefulCredit / 60000);
+  showToast(`🕊️ ${player.name} steps aside — ${totalCredit}m credit banked`, 2500);
   renderSession();
 };
 
