@@ -302,8 +302,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <div class="queue-rows" id="queue-rows"></div>
   </div>
   <div class="sess-actions">
-    <button class="btn-sess-action btn-sitout" id="btn-sitout">😴 Sit This Out</button>
-    <button class="btn-sess-action btn-force-swap" id="btn-force-swap">🗡️ Swap Now</button>
+    <button class="btn-sess-action btn-sitout" id="btn-peaceful">🕊️ Peaceful Transition</button>
+    <button class="btn-sess-action btn-force-swap" id="btn-force-swap">⚔️ Usurper</button>
   </div>
 </div>
 
@@ -579,7 +579,7 @@ function holders() { return sess.thrones.map(t => t.holder); }
 function getQueue() {
   const held = new Set(holders());
   return Object.values(sess.players)
-    .filter(p => !held.has(p.name) && !p.sittingOut)
+    .filter(p => !held.has(p.name))
     .sort((a, b) => a.totalMs - b.totalMs || a.name.localeCompare(b.name));
 }
 
@@ -769,74 +769,63 @@ function renderSession() {
   // Queue
   const heldSet = new Set(holders());
   const queue = getQueue();
-  const sitters = Object.values(sess.players).filter(p => p.sittingOut && !heldSet.has(p.name));
   const rows = document.getElementById('queue-rows');
   rows.innerHTML = '';
-  if (!queue.length && !sitters.length) {
+  if (!queue.length) {
     rows.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:6px 2px">Everyone is on a throne!</div>';
   } else {
     queue.forEach((p, i) => {
+      const stabInfo = cfg.stabLimit > 0 ? ` · ⚔️ ${cfg.stabLimit - (p.stabsUsed||0)} left` : '';
       const row = document.createElement('div');
       row.className = 'queue-row';
-      row.innerHTML = `<div class="queue-pos">#${i + 1}</div><div class="queue-sig">${p.sigil}</div><div class="queue-nm">${p.name}</div><div class="queue-pt">${fmtMs(p.totalMs)}</div>`;
-      rows.appendChild(row);
-    });
-    sitters.forEach(p => {
-      const row = document.createElement('div');
-      row.className = 'queue-row';
-      row.style.opacity = '0.45';
-      row.innerHTML = `<div class="queue-pos">—</div><div class="queue-sig">${p.sigil}</div><div class="queue-nm">${p.name}</div><div class="queue-sitout">Resting</div>`;
+      row.innerHTML = `<div class="queue-pos">#${i + 1}</div><div class="queue-sig">${p.sigil}</div><div class="queue-nm">${p.name}</div><div class="queue-pt">${fmtMs(p.totalMs)}${stabInfo}</div>`;
       rows.appendChild(row);
     });
   }
 
-  // Sit-out button reflects first person in queue
+  // Peaceful Transition button — always available, label shows current holder(s)
   const firstInQueue = queue[0];
-  const sitBtn = document.getElementById('btn-sitout');
-  if (firstInQueue) {
-    sitBtn.className = 'btn-sess-action btn-sitout' + (firstInQueue.sittingOut ? ' out' : '');
-    sitBtn.textContent = firstInQueue.sittingOut ? `↩ ${firstInQueue.name}: Return` : `😴 ${firstInQueue.name}: Sit Out`;
-  } else {
-    const resting = sitters[0];
-    sitBtn.textContent = resting ? `↩ ${resting.name}: Return` : '😴 Sit This Out';
-    sitBtn.className = 'btn-sess-action btn-sitout' + (resting ? ' out' : '');
-  }
+  const holderNames  = sess.thrones.map(t => t.holder).join(' & ');
+  const peacefulBtn  = document.getElementById('btn-peaceful');
+  peacefulBtn.textContent = `🕊️ +5 min for ${holderNames}`;
 
-  // Force-swap (stab) button — show remaining stabs when limit is set
+  // Usurper (force-swap) button — show remaining stabs when limit is set
   const swapBtn = document.getElementById('btn-force-swap');
   if (cfg.stabLimit > 0 && firstInQueue) {
     const left = cfg.stabLimit - (firstInQueue.stabsUsed || 0);
-    const pips = '🗡️'.repeat(left) + (left < cfg.stabLimit ? '·'.repeat(cfg.stabLimit - left) : '');
-    swapBtn.textContent = left > 0 ? `${pips} ${firstInQueue.name}: Stab!` : `🚫 ${firstInQueue.name}: No stabs left`;
+    const pips = '⚔️'.repeat(left) + (left < cfg.stabLimit ? '·'.repeat(cfg.stabLimit - left) : '');
+    swapBtn.textContent = left > 0 ? `${pips} ${firstInQueue.name}: Usurper!` : `🚫 ${firstInQueue.name}: No usurps left`;
     swapBtn.style.opacity = left > 0 ? '1' : '0.4';
   } else {
-    swapBtn.textContent = '🗡️ Swap Now';
+    swapBtn.textContent = firstInQueue ? `⚔️ ${firstInQueue.name}: Usurper!` : '⚔️ Usurper';
     swapBtn.style.opacity = '1';
   }
 }
 
-document.getElementById('btn-sitout').onclick = () => {
-  const q = getQueue();
-  const sitters = Object.values(sess.players).filter(p => p.sittingOut && !holders().includes(p.name));
-  if (q[0]) {
-    q[0].sittingOut = true; playBeep(440); showToast(`${q[0].name} is resting this round`);
-  } else if (sitters[0]) {
-    sitters[0].sittingOut = false; playBeep(660); showToast(`${sitters[0].name} is back in the queue`);
-  }
+// Peaceful Transition — grants the current throne holder(s) an extra 5 minutes.
+// The extra time naturally banks into their totalMs when the swap eventually happens.
+const PEACEFUL_MS = 5 * 60 * 1000;
+document.getElementById('btn-peaceful').onclick = () => {
+  if (!sess) return;
+  sess.timerEnd      += PEACEFUL_MS;
+  sess.timerDuration += PEACEFUL_MS;
+  // Show which holder(s) are benefiting
+  const holderNames = sess.thrones.map(t => t.holder).join(' & ');
+  playBeep(660, 0.12);
+  showToast(`🕊️ +5 min granted to ${holderNames}`, 2500);
   renderSession();
 };
 
 document.getElementById('btn-force-swap').onclick = () => {
+  const q = getQueue();
+  const usurper = q[0];
   if (cfg.stabLimit > 0) {
-    // Attribute the stab to the next person in queue (they're the one demanding the throne)
-    const q = getQueue();
-    const stabber = q[0];
-    if (!stabber) { showToast('No one in the queue to stab!'); return; }
-    if (stabber.stabsUsed >= cfg.stabLimit) {
-      showToast(`${stabber.name} has no stabs left! (${cfg.stabLimit}/${cfg.stabLimit} used)`);
+    if (!usurper) { showToast('No one in the queue to usurp!'); return; }
+    if (usurper.stabsUsed >= cfg.stabLimit) {
+      showToast(`${usurper.name} has no usurps left! (${cfg.stabLimit}/${cfg.stabLimit} used)`);
       return;
     }
-    stabber.stabsUsed++;
+    usurper.stabsUsed++;
   }
   if (sess.timerTick) clearInterval(sess.timerTick);
   pickAndTriggerSwap();
