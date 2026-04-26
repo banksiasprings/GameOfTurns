@@ -272,6 +272,18 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <div style="font-size:11px;color:var(--text3);margin-top:8px">Randomly chosen each round — no one knows exactly when the raven arrives</div>
   </div>
 
+  <!-- Stab Limit -->
+  <div class="card">
+    <div class="section-label">🗡️ Force-Swap Limit (Stabs per Player)</div>
+    <div class="pill-toggle" id="stab-limit-toggle">
+      <button class="pill-btn active" data-stab="0">Unlimited</button>
+      <button class="pill-btn" data-stab="1">1×</button>
+      <button class="pill-btn" data-stab="2">2×</button>
+      <button class="pill-btn" data-stab="3">3×</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px" id="stab-desc">Each player can force a swap as many times as they like.</div>
+  </div>
+
   <button class="btn-primary" id="btn-start-session" disabled>⚔️ Claim the Throne</button>
 </div>
 
@@ -375,6 +387,7 @@ let cfg = {
   throneCount: 2,
   timerMin: 3,
   timerMax: 8,
+  stabLimit: 0,  // 0 = unlimited; 1/2/3 = max force-swaps per player per game
 };
 
 let sess = null; // active session object
@@ -538,6 +551,21 @@ document.getElementById('new-name').addEventListener('keydown', e => { if (e.key
 document.getElementById('t-min').onchange = e => { cfg.timerMin = Math.max(1, Math.min(30, +e.target.value || 3)); e.target.value = cfg.timerMin; };
 document.getElementById('t-max').onchange = e => { cfg.timerMax = Math.max(cfg.timerMin + 1, Math.min(60, +e.target.value || 8)); e.target.value = cfg.timerMax; };
 
+const STAB_DESCS = {
+  0: 'Each player can force a swap as many times as they like.',
+  1: 'Each player gets 1 forced swap for the whole game — use it wisely.',
+  2: 'Each player gets 2 forced swaps for the whole game.',
+  3: 'Each player gets 3 forced swaps for the whole game.',
+};
+document.getElementById('stab-limit-toggle').addEventListener('click', e => {
+  const btn = e.target.closest('.pill-btn');
+  if (!btn) return;
+  document.querySelectorAll('#stab-limit-toggle .pill-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  cfg.stabLimit = +btn.dataset.stab;
+  document.getElementById('stab-desc').textContent = STAB_DESCS[cfg.stabLimit];
+});
+
 // Nav
 document.getElementById('btn-new-game').onclick = () => { renderPlayers(); updateThroneStepper(); showScreen('screen-setup'); };
 document.getElementById('btn-back-setup').onclick = () => showScreen('screen-welcome');
@@ -584,7 +612,7 @@ function startSession() {
 
   // Init players
   cfg.players.forEach(p => {
-    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, sittingOut: false };
+    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, sittingOut: false, stabsUsed: 0 };
   });
 
   // Assign initial holders randomly
@@ -773,6 +801,18 @@ function renderSession() {
     sitBtn.textContent = resting ? `↩ ${resting.name}: Return` : '😴 Sit This Out';
     sitBtn.className = 'btn-sess-action btn-sitout' + (resting ? ' out' : '');
   }
+
+  // Force-swap (stab) button — show remaining stabs when limit is set
+  const swapBtn = document.getElementById('btn-force-swap');
+  if (cfg.stabLimit > 0 && firstInQueue) {
+    const left = cfg.stabLimit - (firstInQueue.stabsUsed || 0);
+    const pips = '🗡️'.repeat(left) + (left < cfg.stabLimit ? '·'.repeat(cfg.stabLimit - left) : '');
+    swapBtn.textContent = left > 0 ? `${pips} ${firstInQueue.name}: Stab!` : `🚫 ${firstInQueue.name}: No stabs left`;
+    swapBtn.style.opacity = left > 0 ? '1' : '0.4';
+  } else {
+    swapBtn.textContent = '🗡️ Swap Now';
+    swapBtn.style.opacity = '1';
+  }
 }
 
 document.getElementById('btn-sitout').onclick = () => {
@@ -787,6 +827,17 @@ document.getElementById('btn-sitout').onclick = () => {
 };
 
 document.getElementById('btn-force-swap').onclick = () => {
+  if (cfg.stabLimit > 0) {
+    // Attribute the stab to the next person in queue (they're the one demanding the throne)
+    const q = getQueue();
+    const stabber = q[0];
+    if (!stabber) { showToast('No one in the queue to stab!'); return; }
+    if (stabber.stabsUsed >= cfg.stabLimit) {
+      showToast(`${stabber.name} has no stabs left! (${cfg.stabLimit}/${cfg.stabLimit} used)`);
+      return;
+    }
+    stabber.stabsUsed++;
+  }
   if (sess.timerTick) clearInterval(sess.timerTick);
   pickAndTriggerSwap();
 };
