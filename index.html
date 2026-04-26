@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#08090f">
+<title>Game of Turns</title>
+<style>
+/* ── Reset & Root ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+:root {
+  --bg:       #08090f;
+  --bg2:      #0f1018;
+  --surface:  #141520;
+  --surface2: #1c1e2e;
+  --border:   #272a3e;
+  --gold:     #c9a227;
+  --gold-dim: rgba(201,162,39,0.15);
+  --gold2:    #e8c84a;
+  --crimson:  #8b1a1a;
+  --crimson2: #c0392b;
+  --red:      #e74c3c;
+  --green:    #27ae60;
+  --text:     #e8dfc8;
+  --text2:    #8a8599;
+  --text3:    #4a4760;
+  --radius:   14px;
+  --font:     -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); }
+
+/* ── Screen system ── */
+.screen { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
+.screen.hidden { display: none !important; }
+
+/* ── Shared components ── */
+.pill-toggle { display: flex; background: var(--surface2); border-radius: 10px; padding: 4px; gap: 4px; }
+.pill-btn { flex: 1; padding: 9px 6px; border: none; border-radius: 7px; font-size: 13px; font-weight: 700; cursor: pointer; background: transparent; color: var(--text2); transition: all 0.2s; font-family: var(--font); }
+.pill-btn.active { background: var(--gold); color: #000; }
+.input { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; font-size: 15px; color: var(--text); outline: none; font-family: var(--font); width: 100%; }
+.input:focus { border-color: var(--gold); }
+.section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); margin-bottom: 10px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.btn-primary { width: 100%; padding: 18px; background: linear-gradient(135deg, var(--gold), #a07d18); color: #000; border: none; border-radius: var(--radius); font-size: 17px; font-weight: 900; cursor: pointer; font-family: var(--font); letter-spacing: 0.3px; }
+.btn-primary:active { opacity: 0.88; }
+.btn-primary:disabled { opacity: 0.35; pointer-events: none; }
+.toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; color: var(--text); z-index: 9999; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+.toast.show { opacity: 1; }
+
+/* ══════════════════════════════════
+   WELCOME SCREEN
+══════════════════════════════════ */
+#screen-welcome {
+  align-items: center; justify-content: center; text-align: center; padding: 40px 28px;
+  background: radial-gradient(ellipse at 50% 30%, rgba(139,26,26,0.18) 0%, transparent 70%),
+              radial-gradient(ellipse at 50% 80%, rgba(201,162,39,0.1) 0%, transparent 60%), var(--bg);
+}
+.welcome-sigil { font-size: 72px; line-height: 1; margin-bottom: 12px; filter: drop-shadow(0 0 24px rgba(201,162,39,0.5)); }
+.welcome-title { font-size: 36px; font-weight: 900; letter-spacing: -1px; background: linear-gradient(135deg, var(--gold2), var(--gold)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.welcome-sub { font-size: 13px; color: var(--text2); margin-top: 6px; letter-spacing: 0.06em; text-transform: uppercase; }
+.welcome-divider { width: 60px; height: 2px; background: linear-gradient(90deg, transparent, var(--gold), transparent); margin: 24px auto; }
+.welcome-tagline { font-size: 15px; color: var(--text2); line-height: 1.5; max-width: 280px; margin: 0 auto 32px; }
+.btn-welcome { width: 100%; padding: 18px; background: linear-gradient(135deg, var(--gold), #a07d18); color: #000; border: none; border-radius: var(--radius); font-size: 18px; font-weight: 900; cursor: pointer; font-family: var(--font); margin-bottom: 12px; }
+.btn-welcome-ghost { width: 100%; padding: 14px; background: transparent; border: 1px solid var(--border); border-radius: var(--radius); font-size: 15px; font-weight: 700; color: var(--text2); cursor: pointer; font-family: var(--font); }
+
+/* ══════════════════════════════════
+   SETUP SCREEN
+══════════════════════════════════ */
+#screen-setup { padding: 20px 18px 48px; gap: 14px; }
+.setup-header { display: flex; align-items: center; gap: 10px; padding: 4px 0 8px; }
+.btn-back { background: none; border: none; color: var(--text2); font-size: 22px; cursor: pointer; padding: 0; }
+.setup-header-title { font-size: 20px; font-weight: 900; }
+
+.player-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; min-height: 4px; }
+.player-row { display: flex; align-items: center; gap: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.player-sigil { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
+.player-row-name { flex: 1; font-size: 15px; font-weight: 700; }
+.player-house { font-size: 11px; color: var(--gold); font-weight: 600; }
+.btn-remove { background: none; border: none; color: var(--text3); font-size: 18px; cursor: pointer; padding: 2px 4px; }
+.btn-remove:active { color: var(--red); }
+.add-row { display: flex; gap: 8px; }
+.add-row .input { flex: 1; }
+.btn-add { background: var(--gold); color: #000; border: none; border-radius: 10px; padding: 11px 16px; font-size: 15px; font-weight: 800; cursor: pointer; flex-shrink: 0; font-family: var(--font); }
+
+.throne-count-wrap { display: flex; align-items: center; justify-content: space-between; }
+.throne-stepper { display: flex; align-items: center; gap: 0; background: var(--surface2); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.step-btn { background: none; border: none; color: var(--text2); font-size: 22px; font-weight: 700; cursor: pointer; padding: 8px 16px; font-family: var(--font); }
+.step-btn:active { background: var(--border); }
+.step-val { font-size: 20px; font-weight: 900; color: var(--gold); padding: 8px 4px; min-width: 32px; text-align: center; }
+
+.timer-row { display: flex; align-items: center; gap: 10px; }
+.timer-field { display: flex; align-items: center; gap: 6px; flex: 1; }
+.timer-num { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 17px; font-weight: 800; color: var(--gold); width: 56px; text-align: center; outline: none; font-family: var(--font); border: 1px solid var(--border); }
+.timer-num:focus { border-color: var(--gold); }
+.timer-sep { color: var(--text3); font-size: 14px; }
+
+/* ══════════════════════════════════
+   SESSION SCREEN
+══════════════════════════════════ */
+#screen-session { background: var(--bg); }
+.sess-topbar { padding: 14px 18px 8px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+.sess-logo { font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+.sess-mode-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 5px; background: var(--gold-dim); color: var(--gold); letter-spacing: 0.05em; }
+.sess-mode-badge.trials { background: rgba(139,26,26,0.25); color: #e07070; }
+.btn-end { background: none; border: 1px solid var(--border); border-radius: 7px; padding: 5px 12px; font-size: 11px; font-weight: 700; color: var(--text2); cursor: pointer; font-family: var(--font); }
+
+.thrones-wrap { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.throne-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; position: relative; overflow: hidden; }
+.throne-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--gold); }
+.throne-lbl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); margin-bottom: 8px; }
+.throne-holder-row { display: flex; align-items: center; gap: 12px; }
+.throne-sigil { font-size: 32px; }
+.throne-name { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
+.throne-playtime { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.throne-timer-wrap { margin-top: 10px; height: 3px; background: var(--surface2); border-radius: 2px; }
+.throne-timer-bar { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--gold), var(--gold2)); transition: width 0.4s linear; }
+.throne-timer-bar.warn { background: linear-gradient(90deg, #e67e22, #f39c12); }
+.throne-timer-bar.danger { background: linear-gradient(90deg, var(--crimson), var(--red)); }
+.throne-next { font-size: 11px; color: var(--text2); margin-top: 8px; }
+.throne-next strong { color: var(--text); }
+.throne-swap-in { color: var(--gold); font-weight: 700; }
+
+.queue-wrap { padding: 4px 16px 8px; }
+.queue-rows { display: flex; flex-direction: column; gap: 6px; }
+.queue-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 13px; }
+.queue-pos { font-size: 10px; font-weight: 800; color: var(--text3); width: 20px; }
+.queue-sig { font-size: 18px; }
+.queue-nm { flex: 1; font-size: 14px; font-weight: 700; }
+.queue-pt { font-size: 11px; color: var(--text2); }
+.queue-sitout { font-size: 10px; font-weight: 700; background: rgba(231,76,60,0.15); color: var(--red); border-radius: 5px; padding: 2px 6px; }
+
+.sess-actions { padding: 10px 16px 32px; display: flex; gap: 10px; }
+.btn-sess-action { flex: 1; padding: 13px 8px; border-radius: 12px; font-size: 13px; font-weight: 800; cursor: pointer; font-family: var(--font); border: 1px solid; }
+.btn-sitout { background: transparent; border-color: var(--border); color: var(--text2); }
+.btn-sitout.out { background: rgba(231,76,60,0.12); border-color: var(--red); color: var(--red); }
+.btn-force-swap { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+
+/* ══════════════════════════════════
+   SWAP ALERT SCREEN
+══════════════════════════════════ */
+#screen-alert {
+  align-items: center; justify-content: center; text-align: center; padding: 32px 24px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(139,26,26,0.4) 0%, transparent 70%), var(--bg);
+}
+.alert-raven { font-size: 48px; margin-bottom: 12px; filter: drop-shadow(0 0 20px rgba(201,162,39,0.6)); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.alert-scroll-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; color: var(--gold); margin-bottom: 6px; }
+.alert-decree { font-size: 16px; color: var(--text2); margin-bottom: 14px; line-height: 1.4; }
+.alert-sigil { font-size: 56px; margin-bottom: 6px; }
+.alert-claimant { font-size: 44px; font-weight: 900; letter-spacing: -1px; color: var(--gold2); line-height: 1.1; margin-bottom: 4px; }
+.alert-throne-lbl { font-size: 13px; color: var(--text2); margin-bottom: 16px; }
+.alert-countdown { font-size: 96px; font-weight: 900; line-height: 1; color: var(--text); margin: 6px 0 10px; }
+.alert-countdown.warn { color: var(--gold); }
+.alert-countdown.urgent { color: var(--red); text-shadow: 0 0 30px rgba(231,76,60,0.5); }
+/* Challenge / Treat */
+.alert-challenge-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; margin: 8px 0 16px; width: 100%; max-width: 340px; text-align: left; }
+.alert-challenge-type { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+.alert-challenge-type.physical { color: #e07070; }
+.alert-challenge-type.treat { color: var(--green); }
+.alert-challenge-text { font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+.btn-alert-done { margin-top: 8px; padding: 16px 40px; background: var(--gold); color: #000; border: none; border-radius: 14px; font-size: 17px; font-weight: 900; cursor: pointer; font-family: var(--font); }
+.btn-alert-done:active { opacity: 0.88; }
+.alert-divider { width: 80px; height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent); margin: 10px auto; }
+
+/* ══════════════════════════════════
+   RECAP SCREEN
+══════════════════════════════════ */
+#screen-recap { padding: 28px 18px 50px; gap: 14px;
+  background: radial-gradient(ellipse at 50% 10%, rgba(201,162,39,0.1) 0%, transparent 60%), var(--bg); }
+.recap-crown { font-size: 48px; text-align: center; filter: drop-shadow(0 0 20px rgba(201,162,39,0.6)); }
+.recap-title { font-size: 28px; font-weight: 900; text-align: center; letter-spacing: -0.5px; }
+.recap-sub { font-size: 13px; color: var(--text2); text-align: center; }
+.recap-stats-row { display: flex; gap: 8px; }
+.recap-stat { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 8px; text-align: center; }
+.recap-stat-val { font-size: 22px; font-weight: 900; color: var(--gold); }
+.recap-stat-lbl { font-size: 10px; color: var(--text2); margin-top: 2px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.recap-list { display: flex; flex-direction: column; gap: 8px; }
+.recap-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 13px 14px; }
+.recap-row.champion { border-color: var(--gold); background: rgba(201,162,39,0.06); }
+.recap-row.patient { border-color: #27ae60; background: rgba(39,174,96,0.06); }
+.recap-rank { font-size: 20px; width: 28px; text-align: center; }
+.recap-sig { font-size: 22px; }
+.recap-info { flex: 1; min-width: 0; }
+.recap-name { font-size: 15px; font-weight: 800; }
+.recap-detail { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.recap-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-left: 5px; letter-spacing: 0.04em; }
+.badge-champion { background: rgba(201,162,39,0.2); color: var(--gold); }
+.badge-patient { background: rgba(39,174,96,0.2); color: #2ecc71; }
+.recap-time { font-size: 17px; font-weight: 900; color: var(--gold); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     WELCOME
+══════════════════════════════════ -->
+<div class="screen" id="screen-welcome">
+  <div class="welcome-sigil">⚔️</div>
+  <div class="welcome-title">Game of Turns</div>
+  <div class="welcome-sub">A fair throne is a peaceful realm</div>
+  <div class="welcome-divider"></div>
+  <div class="welcome-tagline">A controller rotation app for those who value fairness — and dramatic sound effects.</div>
+  <button class="btn-welcome" id="btn-new-game">⚔️ Begin a New Session</button>
+  <button class="btn-welcome-ghost" id="btn-continue" style="display:none">🏰 Continue Last Session</button>
+</div>
+
+<!-- ══════════════════════════════════
+     SETUP
+══════════════════════════════════ -->
+<div class="screen hidden" id="screen-setup">
+  <div class="setup-header">
+    <button class="btn-back" id="btn-back-setup">‹</button>
+    <div class="setup-header-title">⚔️ Assemble the Realm</div>
+  </div>
+
+  <!-- Players -->
+  <div class="card">
+    <div class="section-label">🏰 Lords &amp; Ladies</div>
+    <div class="player-list" id="player-list"></div>
+    <div class="add-row">
+      <input class="input" id="new-name" type="text" placeholder="Enter a name…" maxlength="20" autocomplete="off" />
+      <button class="btn-add" id="btn-add-player">Add</button>
+    </div>
+  </div>
+
+  <!-- Mode -->
+  <div class="card">
+    <div class="section-label">📜 Mode of Play</div>
+    <div class="pill-toggle" id="mode-toggle">
+      <button class="pill-btn active" data-mode="reign">⚔️ The Reign</button>
+      <button class="pill-btn" data-mode="trials">🏰 Trials of the Realm</button>
+    </div>
+    <div id="mode-desc" style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5">
+      Pure rotation — the smart queue gives everyone equal time on the throne.
+    </div>
+  </div>
+
+  <!-- Thrones -->
+  <div class="card">
+    <div class="section-label">🗡️ Number of Thrones</div>
+    <div class="throne-count-wrap">
+      <div style="font-size:13px;color:var(--text2)">Controllers in play</div>
+      <div class="throne-stepper">
+        <button class="step-btn" id="step-down">−</button>
+        <div class="step-val" id="throne-count-display">2</div>
+        <button class="step-btn" id="step-up">+</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timer -->
+  <div class="card">
+    <div class="section-label">⏱ Swap Timer Range</div>
+    <div class="timer-row">
+      <div class="timer-field">
+        <span style="font-size:12px;color:var(--text2)">Min</span>
+        <input class="timer-num" id="t-min" type="number" value="3" min="1" max="30">
+        <span style="font-size:12px;color:var(--text3)">min</span>
+      </div>
+      <div class="timer-sep">—</div>
+      <div class="timer-field">
+        <span style="font-size:12px;color:var(--text2)">Max</span>
+        <input class="timer-num" id="t-max" type="number" value="8" min="1" max="60">
+        <span style="font-size:12px;color:var(--text3)">min</span>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">Randomly chosen each round — no one knows exactly when the raven arrives</div>
+  </div>
+
+  <button class="btn-primary" id="btn-start-session" disabled>⚔️ Claim the Throne</button>
+</div>
+
+<!-- ══════════════════════════════════
+     SESSION
+══════════════════════════════════ -->
+<div class="screen hidden" id="screen-session">
+  <div class="sess-topbar">
+    <div class="sess-logo">⚔️ Game of Turns</div>
+    <div class="sess-mode-badge" id="sess-mode-badge">THE REIGN</div>
+    <button class="btn-end" id="btn-end-session">End →</button>
+  </div>
+  <div class="thrones-wrap" id="thrones-wrap"></div>
+  <div class="queue-wrap">
+    <div class="section-label" style="padding:0 2px 6px">Awaiting the Throne</div>
+    <div class="queue-rows" id="queue-rows"></div>
+  </div>
+  <div class="sess-actions">
+    <button class="btn-sess-action btn-sitout" id="btn-sitout">😴 Sit This Out</button>
+    <button class="btn-sess-action btn-force-swap" id="btn-force-swap">🗡️ Swap Now</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SWAP ALERT
+══════════════════════════════════ -->
+<div class="screen hidden" id="screen-alert">
+  <div class="alert-raven" id="alert-raven">📜</div>
+  <div class="alert-scroll-title">A Raven Has Arrived!</div>
+  <div class="alert-decree" id="alert-decree">The Iron Throne demands a new ruler</div>
+  <div class="alert-sigil" id="alert-sigil">👑</div>
+  <div class="alert-claimant" id="alert-claimant">—</div>
+  <div class="alert-throne-lbl" id="alert-throne-lbl"></div>
+  <div id="alert-challenge-wrap" style="display:none;width:100%;max-width:340px">
+    <div class="alert-divider"></div>
+    <div class="alert-challenge-card">
+      <div class="alert-challenge-type" id="challenge-type-lbl">⚔️ TRIAL</div>
+      <div class="alert-challenge-text" id="challenge-text">—</div>
+    </div>
+  </div>
+  <div class="alert-countdown" id="alert-countdown">10</div>
+  <button class="btn-alert-done" id="btn-alert-done">✓ Throne Claimed</button>
+</div>
+
+<!-- ══════════════════════════════════
+     RECAP
+══════════════════════════════════ -->
+<div class="screen hidden" id="screen-recap">
+  <div class="recap-crown">👑</div>
+  <div class="recap-title">The Chronicle</div>
+  <div class="recap-sub" id="recap-sub">End of session</div>
+  <div class="recap-stats-row">
+    <div class="recap-stat"><div class="recap-stat-val" id="rs-swaps">0</div><div class="recap-stat-lbl">Swaps</div></div>
+    <div class="recap-stat"><div class="recap-stat-val" id="rs-dur">0m</div><div class="recap-stat-lbl">Duration</div></div>
+    <div class="recap-stat"><div class="recap-stat-val" id="rs-longest">0m</div><div class="recap-stat-lbl">Longest Reign</div></div>
+  </div>
+  <div class="section-label">Final Standings</div>
+  <div class="recap-list" id="recap-list"></div>
+  <button class="btn-primary" id="btn-new-session" style="margin-top:8px">⚔️ New Session</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// Constants
+// ══════════════════════════════════════════════════
+const SIGILS = ['🦁','🐉','🦅','🐺','🦊','🐯','🦈','🦂','🦉','🐻','🦋','⚡','🌙','🔱','💀','🗡️'];
+const HOUSE_NAMES = ['of Lannister','of Stark','of Targaryen','of Baratheon','of Greyjoy','of Tyrell','of Martell','of Tully','of Arryn','of Bolton','of Mormont','of Frey','of Clegane','of Reed','of Karstark','of Umber'];
+
+const CHALLENGES = [
+  { type:'physical', text:'⚔️ Do 10 jumping jacks before claiming the throne!' },
+  { type:'physical', text:'🗡️ 5 push-ups — prove your strength to the realm!' },
+  { type:'physical', text:'💃 Strike your best warrior pose for 10 seconds!' },
+  { type:'physical', text:'🌀 Spin around 3 times like you\'re in battle!' },
+  { type:'physical', text:'🏃 Do a victory lap around the room!' },
+  { type:'physical', text:'⭐ 10 star jumps for the realm!' },
+  { type:'physical', text:'💪 Hold a plank for 15 seconds to earn your seat!' },
+  { type:'physical', text:'📣 Belt out your best battle cry!' },
+  { type:'physical', text:'🦵 Balance on one leg while everyone counts to 10!' },
+  { type:'physical', text:'🎭 Do your silliest dance move for 5 seconds!' },
+  { type:'treat', text:'🍫 Grab a chocolate from the treasure chest!' },
+  { type:'treat', text:'🍬 Pick any sweet from the royal confectionery!' },
+  { type:'treat', text:'🥤 Choose a drink of your choice — you\'ve earned it!' },
+  { type:'treat', text:'🍪 A biscuit for the patient warrior!' },
+  { type:'treat', text:'🍭 Raid the lolly bowl — you waited your turn!' },
+  { type:'treat', text:'🍿 Snack attack! Grab something from the snack table!' },
+  { type:'treat', text:'🧃 Your choice of drink, milord/milady!' },
+  { type:'treat', text:'🍦 Sweet reward — grab a treat before you play!' },
+];
+
+const STORAGE_KEY = 'got_players_v1';
+const SESSION_KEY = 'got_session_v1';
+
+// ══════════════════════════════════════════════════
+// App State
+// ══════════════════════════════════════════════════
+let cfg = {
+  players: [],   // [{ name, sigil, house }]
+  mode: 'reign', // 'reign' | 'trials'
+  throneCount: 2,
+  timerMin: 3,
+  timerMax: 8,
+};
+
+let sess = null; // active session object
+
+// ══════════════════════════════════════════════════
+// Audio (Web Audio API – no files)
+// ══════════════════════════════════════════════════
+let _audioCtx = null;
+const AC = () => {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx;
+};
+
+function playBuzzer() {
+  try {
+    const ctx = AC();
+    // Medieval-ish buzzer: three descending blasts
+    const tones = [[220, 0], [196, 0.28], [174, 0.56]];
+    tones.forEach(([freq, t]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(freq * 2, ctx.currentTime + t);
+      o.frequency.exponentialRampToValueAtTime(freq, ctx.currentTime + t + 0.22);
+      g.gain.setValueAtTime(0, ctx.currentTime + t);
+      g.gain.linearRampToValueAtTime(0.45, ctx.currentTime + t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.28);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.32);
+    });
+    // Low bass thud
+    const b = ctx.createOscillator(), bg = ctx.createGain();
+    b.connect(bg); bg.connect(ctx.destination);
+    b.type = 'sine'; b.frequency.value = 60;
+    bg.gain.setValueAtTime(0.5, ctx.currentTime);
+    bg.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    b.start(); b.stop(ctx.currentTime + 0.35);
+  } catch(e) {}
+}
+
+function playBeep(freq = 880, dur = 0.07) {
+  try {
+    const ctx = AC(), o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.2, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    o.start(); o.stop(ctx.currentTime + dur + 0.01);
+  } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════
+// Persistence
+// ══════════════════════════════════════════════════
+function loadPlayers() {
+  try { const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(d)) cfg.players = d; } catch(e) {}
+}
+function savePlayers() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg.players)); } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════
+// Utility
+// ══════════════════════════════════════════════════
+function fmtMs(ms) {
+  const s = Math.floor(ms / 1000), m = Math.floor(s / 60), r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+}
+function fmtMinRound(ms) { return Math.round(ms / 60000) + 'm'; }
+function rand(min, max) { return min + Math.random() * (max - min); }
+function randInt(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function showToast(msg, dur = 2000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('hidden', s.id !== id));
+  window.scrollTo(0, 0);
+}
+
+// ══════════════════════════════════════════════════
+// Setup UI
+// ══════════════════════════════════════════════════
+const MODE_DESCS = {
+  reign: 'Pure rotation — the smart queue gives everyone equal time on the throne.',
+  trials: 'When the raven arrives, the new claimant must face a random trial — physical challenge or sweet treat — before taking the throne.',
+};
+
+function renderPlayers() {
+  const list = document.getElementById('player-list');
+  list.innerHTML = '';
+  cfg.players.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'player-row';
+    row.innerHTML = `
+      <div class="player-sigil">${p.sigil}</div>
+      <div style="flex:1">
+        <div class="player-row-name">${p.name}</div>
+        <div class="player-house">${p.house}</div>
+      </div>
+      <button class="btn-remove" data-i="${i}">✕</button>`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('.btn-remove').forEach(b => {
+    b.onclick = () => { cfg.players.splice(+b.dataset.i, 1); savePlayers(); renderPlayers(); updateStartBtn(); };
+  });
+  updateStartBtn();
+}
+
+function addPlayer(name) {
+  name = name.trim();
+  if (!name) return;
+  if (cfg.players.find(p => p.name.toLowerCase() === name.toLowerCase())) { showToast('That name is already in the realm'); return; }
+  const sigil = SIGILS[cfg.players.length % SIGILS.length];
+  const house = HOUSE_NAMES[cfg.players.length % HOUSE_NAMES.length];
+  cfg.players.push({ name, sigil, house });
+  savePlayers();
+  renderPlayers();
+  document.getElementById('new-name').value = '';
+}
+
+function updateStartBtn() {
+  const needed = cfg.throneCount + 1;
+  const btn = document.getElementById('btn-start-session');
+  btn.disabled = cfg.players.length < needed;
+  btn.textContent = cfg.players.length < needed
+    ? `Need at least ${needed} players for ${cfg.throneCount} throne${cfg.throneCount > 1 ? 's' : ''}`
+    : '⚔️ Claim the Throne';
+}
+
+// Mode toggle
+document.getElementById('mode-toggle').addEventListener('click', e => {
+  const btn = e.target.closest('.pill-btn'); if (!btn) return;
+  cfg.mode = btn.dataset.mode;
+  document.querySelectorAll('#mode-toggle .pill-btn').forEach(b => b.classList.toggle('active', b === btn));
+  document.getElementById('mode-desc').textContent = MODE_DESCS[cfg.mode];
+  const badge = document.getElementById('sess-mode-badge');
+  badge.textContent = cfg.mode === 'reign' ? 'THE REIGN' : 'TRIALS';
+  badge.className = 'sess-mode-badge' + (cfg.mode === 'trials' ? ' trials' : '');
+});
+
+// Throne stepper
+let throneCount = 2;
+function updateThroneStepper() {
+  document.getElementById('throne-count-display').textContent = throneCount;
+  cfg.throneCount = throneCount;
+  document.getElementById('step-down').style.opacity = throneCount <= 2 ? '0.3' : '1';
+  document.getElementById('step-up').style.opacity = throneCount >= 4 ? '0.3' : '1';
+  updateStartBtn();
+}
+document.getElementById('step-down').onclick = () => { if (throneCount > 2) { throneCount--; updateThroneStepper(); } };
+document.getElementById('step-up').onclick = () => { if (throneCount < 4) { throneCount++; updateThroneStepper(); } };
+
+// Add player
+document.getElementById('btn-add-player').onclick = () => addPlayer(document.getElementById('new-name').value);
+document.getElementById('new-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addPlayer(e.target.value); } });
+
+// Timer inputs
+document.getElementById('t-min').onchange = e => { cfg.timerMin = Math.max(1, Math.min(30, +e.target.value || 3)); e.target.value = cfg.timerMin; };
+document.getElementById('t-max').onchange = e => { cfg.timerMax = Math.max(cfg.timerMin + 1, Math.min(60, +e.target.value || 8)); e.target.value = cfg.timerMax; };
+
+// Nav
+document.getElementById('btn-new-game').onclick = () => { renderPlayers(); updateThroneStepper(); showScreen('screen-setup'); };
+document.getElementById('btn-back-setup').onclick = () => showScreen('screen-welcome');
+
+// ══════════════════════════════════════════════════
+// Session Logic
+// ══════════════════════════════════════════════════
+function getPlayerData(name) { return sess.players[name]; }
+function holders() { return sess.thrones.map(t => t.holder); }
+
+function getQueue() {
+  const held = new Set(holders());
+  return Object.values(sess.players)
+    .filter(p => !held.has(p.name) && !p.sittingOut)
+    .sort((a, b) => a.totalMs - b.totalMs || a.name.localeCompare(b.name));
+}
+
+function getNextForThrone(idx) {
+  const otherHeld = new Set(sess.thrones.filter((_, i) => i !== idx).map(t => t.holder));
+  const curHolder = sess.thrones[idx].holder;
+  return Object.values(sess.players)
+    .filter(p => !otherHeld.has(p.name) && p.name !== curHolder && !p.sittingOut)
+    .sort((a, b) => a.totalMs - b.totalMs || a.name.localeCompare(b.name))[0] || null;
+}
+
+function pickTimer() {
+  return rand(cfg.timerMin * 60000, cfg.timerMax * 60000);
+}
+
+function startSession() {
+  sess = {
+    mode: cfg.mode,
+    throneCount: cfg.throneCount,
+    players: {},
+    thrones: [],
+    swaps: 0,
+    startMs: Date.now(),
+    timerDuration: 0,
+    timerEnd: 0,
+    timerTick: null,
+    alertTick: null,
+    swappingThrone: 0,
+  };
+
+  // Init players
+  cfg.players.forEach(p => {
+    sess.players[p.name] = { name: p.name, sigil: p.sigil, house: p.house, totalMs: 0, longestStintMs: 0, stintStart: null, sittingOut: false };
+  });
+
+  // Assign initial holders randomly
+  const shuffled = [...cfg.players].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < cfg.throneCount; i++) {
+    const h = shuffled[i].name;
+    sess.thrones.push({ holder: h, assignedAt: Date.now() });
+    sess.players[h].stintStart = Date.now();
+  }
+
+  // Update mode badge
+  const badge = document.getElementById('sess-mode-badge');
+  badge.textContent = cfg.mode === 'reign' ? 'THE REIGN' : 'TRIALS';
+  badge.className = 'sess-mode-badge' + (cfg.mode === 'trials' ? ' trials' : '');
+
+  setTimer();
+  showScreen('screen-session');
+  renderSession();
+}
+
+function setTimer() {
+  if (sess.timerTick) clearInterval(sess.timerTick);
+  const dur = pickTimer();
+  sess.timerDuration = dur;
+  sess.timerEnd = Date.now() + dur;
+  sess.timerTick = setInterval(() => {
+    if (Date.now() >= sess.timerEnd) {
+      clearInterval(sess.timerTick);
+      pickAndTriggerSwap();
+    }
+    renderSession();
+  }, 400);
+}
+
+function pickAndTriggerSwap() {
+  // Pick the throne whose holder has reigned longest
+  let chosenIdx = 0;
+  if (sess.throneCount > 1) {
+    const ranked = sess.thrones.map((t, i) => ({ i, ms: (sess.players[t.holder]?.totalMs || 0) + (Date.now() - (sess.players[t.holder]?.stintStart || Date.now())) }));
+    chosenIdx = ranked.sort((a, b) => b.ms - a.ms)[0].i;
+  }
+  const next = getNextForThrone(chosenIdx);
+  if (!next) { setTimer(); return; } // No one waiting — extend
+
+  sess.swappingThrone = chosenIdx;
+  sess.swaps++;
+
+  // Finalise current holder's time
+  const curHolder = sess.players[sess.thrones[chosenIdx].holder];
+  if (curHolder?.stintStart) {
+    const stintMs = Date.now() - curHolder.stintStart;
+    curHolder.totalMs += stintMs;
+    if (stintMs > curHolder.longestStintMs) curHolder.longestStintMs = stintMs;
+    curHolder.stintStart = null;
+  }
+
+  // Pick challenge if trials mode
+  let challenge = null;
+  if (sess.mode === 'trials') challenge = randInt(CHALLENGES);
+
+  triggerAlert(next, chosenIdx, challenge);
+}
+
+function triggerAlert(nextPlayer, throneIdx, challenge) {
+  playBuzzer();
+  document.getElementById('alert-sigil').textContent = nextPlayer.sigil;
+  document.getElementById('alert-claimant').textContent = nextPlayer.name;
+  document.getElementById('alert-throne-lbl').textContent = sess.throneCount > 1 ? `Throne ${throneIdx + 1}` : '';
+  document.getElementById('alert-decree').textContent =
+    challenge ? `${nextPlayer.name}, face your trial to claim the throne!` : 'The Iron Throne demands a new ruler';
+
+  // Challenge card
+  const wrap = document.getElementById('alert-challenge-wrap');
+  if (challenge) {
+    wrap.style.display = '';
+    document.getElementById('challenge-type-lbl').textContent = challenge.type === 'physical' ? '⚔️ TRIAL OF STRENGTH' : '🍯 SWEET REWARD';
+    document.getElementById('challenge-type-lbl').className = 'alert-challenge-type ' + challenge.type;
+    document.getElementById('challenge-text').textContent = challenge.text;
+  } else {
+    wrap.style.display = 'none';
+  }
+
+  // Countdown
+  let count = 10;
+  const cdEl = document.getElementById('alert-countdown');
+  cdEl.textContent = count;
+  cdEl.className = 'alert-countdown';
+
+  if (sess.alertTick) clearInterval(sess.alertTick);
+  sess.alertTick = setInterval(() => {
+    count--;
+    cdEl.textContent = Math.max(0, count);
+    if (count <= 3) cdEl.className = 'alert-countdown urgent';
+    else if (count <= 5) cdEl.className = 'alert-countdown warn';
+    if (count <= 3 && count > 0) playBeep(count <= 1 ? 1200 : 880, 0.06);
+    if (count <= 0) { clearInterval(sess.alertTick); completeSwap(nextPlayer.name); }
+  }, 1000);
+
+  document.getElementById('btn-alert-done').onclick = () => {
+    if (sess.alertTick) clearInterval(sess.alertTick);
+    completeSwap(nextPlayer.name);
+  };
+
+  showScreen('screen-alert');
+}
+
+function completeSwap(newHolder) {
+  const ti = sess.swappingThrone;
+  sess.thrones[ti].holder = newHolder;
+  sess.thrones[ti].assignedAt = Date.now();
+  const np = sess.players[newHolder];
+  if (np) np.stintStart = Date.now();
+  showScreen('screen-session');
+  setTimer();
+  renderSession();
+}
+
+// ══════════════════════════════════════════════════
+// Render Session
+// ══════════════════════════════════════════════════
+function renderSession() {
+  const now = Date.now();
+  const remaining = Math.max(0, sess.timerEnd - now);
+  const pct = sess.timerDuration > 0 ? (1 - remaining / sess.timerDuration) * 100 : 0;
+  const barCls = pct > 85 ? 'danger' : pct > 65 ? 'warn' : '';
+
+  const wrap = document.getElementById('thrones-wrap');
+  wrap.innerHTML = '';
+  sess.thrones.forEach((t, i) => {
+    const p = sess.players[t.holder];
+    const stintMs = p?.stintStart ? now - p.stintStart : 0;
+    const next = getNextForThrone(i);
+    const card = document.createElement('div');
+    card.className = 'throne-card';
+    card.innerHTML = `
+      <div class="throne-lbl">🗡️ ${sess.throneCount > 1 ? 'THRONE ' + (i + 1) : 'THE IRON THRONE'} — CURRENT RULER</div>
+      <div class="throne-holder-row">
+        <div class="throne-sigil">${p?.sigil || '❓'}</div>
+        <div>
+          <div class="throne-name">${p?.name || '?'}</div>
+          <div class="throne-playtime">This reign: ${fmtMs(stintMs)} · Total: ${fmtMs((p?.totalMs || 0) + stintMs)}</div>
+        </div>
+      </div>
+      <div class="throne-timer-wrap">
+        <div class="throne-timer-bar ${barCls}" style="width:${pct}%"></div>
+      </div>
+      <div class="throne-next">
+        ⏭ Next: <strong>${next ? next.sigil + ' ' + next.name : 'No one in queue'}</strong>
+        · <span class="throne-swap-in">${fmtMs(remaining)}</span>
+      </div>`;
+    wrap.appendChild(card);
+  });
+
+  // Queue
+  const heldSet = new Set(holders());
+  const queue = getQueue();
+  const sitters = Object.values(sess.players).filter(p => p.sittingOut && !heldSet.has(p.name));
+  const rows = document.getElementById('queue-rows');
+  rows.innerHTML = '';
+  if (!queue.length && !sitters.length) {
+    rows.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:6px 2px">Everyone is on a throne!</div>';
+  } else {
+    queue.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'queue-row';
+      row.innerHTML = `<div class="queue-pos">#${i + 1}</div><div class="queue-sig">${p.sigil}</div><div class="queue-nm">${p.name}</div><div class="queue-pt">${fmtMs(p.totalMs)}</div>`;
+      rows.appendChild(row);
+    });
+    sitters.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'queue-row';
+      row.style.opacity = '0.45';
+      row.innerHTML = `<div class="queue-pos">—</div><div class="queue-sig">${p.sigil}</div><div class="queue-nm">${p.name}</div><div class="queue-sitout">Resting</div>`;
+      rows.appendChild(row);
+    });
+  }
+
+  // Sit-out button reflects first person in queue
+  const firstInQueue = queue[0];
+  const sitBtn = document.getElementById('btn-sitout');
+  if (firstInQueue) {
+    sitBtn.className = 'btn-sess-action btn-sitout' + (firstInQueue.sittingOut ? ' out' : '');
+    sitBtn.textContent = firstInQueue.sittingOut ? `↩ ${firstInQueue.name}: Return` : `😴 ${firstInQueue.name}: Sit Out`;
+  } else {
+    const resting = sitters[0];
+    sitBtn.textContent = resting ? `↩ ${resting.name}: Return` : '😴 Sit This Out';
+    sitBtn.className = 'btn-sess-action btn-sitout' + (resting ? ' out' : '');
+  }
+}
+
+document.getElementById('btn-sitout').onclick = () => {
+  const q = getQueue();
+  const sitters = Object.values(sess.players).filter(p => p.sittingOut && !holders().includes(p.name));
+  if (q[0]) {
+    q[0].sittingOut = true; playBeep(440); showToast(`${q[0].name} is resting this round`);
+  } else if (sitters[0]) {
+    sitters[0].sittingOut = false; playBeep(660); showToast(`${sitters[0].name} is back in the queue`);
+  }
+  renderSession();
+};
+
+document.getElementById('btn-force-swap').onclick = () => {
+  if (sess.timerTick) clearInterval(sess.timerTick);
+  pickAndTriggerSwap();
+};
+
+document.getElementById('btn-end-session').onclick = showRecap;
+document.getElementById('btn-start-session').onclick = startSession;
+
+// ══════════════════════════════════════════════════
+// Recap
+// ══════════════════════════════════════════════════
+function showRecap() {
+  if (sess.timerTick) clearInterval(sess.timerTick);
+  if (sess.alertTick) clearInterval(sess.alertTick);
+  const now = Date.now();
+  // Finalise holders
+  sess.thrones.forEach(t => {
+    const p = sess.players[t.holder];
+    if (p?.stintStart) {
+      const ms = now - p.stintStart;
+      p.totalMs += ms;
+      if (ms > p.longestStintMs) p.longestStintMs = ms;
+      p.stintStart = null;
+    }
+  });
+  const totalMs = now - sess.startMs;
+  const sorted = Object.values(sess.players).sort((a, b) => b.totalMs - a.totalMs);
+  const patient = Object.values(sess.players).sort((a, b) => a.totalMs - b.totalMs)[0];
+  const longest = Math.max(...Object.values(sess.players).map(p => p.longestStintMs));
+
+  document.getElementById('recap-sub').textContent = `${sorted.length} lords & ladies · ${sess.throneCount} throne${sess.throneCount > 1 ? 's' : ''}`;
+  document.getElementById('rs-swaps').textContent = sess.swaps;
+  document.getElementById('rs-dur').textContent = fmtMinRound(totalMs);
+  document.getElementById('rs-longest').textContent = fmtMinRound(longest);
+
+  const list = document.getElementById('recap-list');
+  list.innerHTML = '';
+  sorted.forEach((p, i) => {
+    const isChamp = i === 0;
+    const isPat = p.name === patient?.name && sorted.length > 1;
+    const row = document.createElement('div');
+    row.className = 'recap-row' + (isChamp ? ' champion' : isPat ? ' patient' : '');
+    const rank = ['🥇','🥈','🥉'][i] || `#${i+1}`;
+    row.innerHTML = `
+      <div class="recap-rank">${rank}</div>
+      <div class="recap-sig">${p.sigil}</div>
+      <div class="recap-info">
+        <div class="recap-name">${p.name}${isChamp ? '<span class="recap-badge badge-champion">👑 Most Time</span>' : ''}${isPat ? '<span class="recap-badge badge-patient">🌿 Most Patient</span>' : ''}</div>
+        <div class="recap-detail">${p.house} · Longest reign: ${fmtMs(p.longestStintMs)}</div>
+      </div>
+      <div class="recap-time">${fmtMs(p.totalMs)}</div>`;
+    list.appendChild(row);
+  });
+  showScreen('screen-recap');
+}
+
+document.getElementById('btn-new-session').onclick = () => { renderPlayers(); updateThroneStepper(); showScreen('screen-setup'); };
+
+// ══════════════════════════════════════════════════
+// Boot
+// ══════════════════════════════════════════════════
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+loadPlayers();
+showScreen('screen-welcome');
+</script>
+</body>
+</html>
